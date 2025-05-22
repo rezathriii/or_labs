@@ -1,0 +1,58 @@
+model "Graph Coloring"
+uses "mmxprs"
+
+parameters
+  N = 20
+  p = 0.1
+  InputFile = "N20_p0.1.txt"
+end-parameters
+
+declarations
+  Nodes = 1..N
+  Colors = 1..N
+  EDGES: set of array(1..2) of integer
+  x: array(Nodes, Colors) of mpvar
+  y: array(Colors) of mpvar
+end-declarations
+
+initializations from InputFile
+  EDGES as "EdgeList"
+end-initializations
+
+Minimize := sum(k in Colors) y(k)
+
+! Constraints
+forall(i in Nodes) sum(k in Colors) x(i,k) = 1
+
+forall(e in EDGES, k in Colors) do
+  x(e(1),k) + x(e(2),k) <= 1
+end-do
+
+forall(i in Nodes, k in Colors) x(i,k) <= y(k)
+
+
+forall(k in Colors) y(k) is_binary
+forall(i in Nodes, k in Colors) x(i,k) is_binary
+
+minimize(Minimize)
+writeln("Total colors used: ", getobjval)
+
+! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+! OUTPUT RESULTS
+! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+writeln("\n=== Graph Coloring Results ===")
+writeln("Graph parameters:")
+writeln("  Nodes (N): ", N)
+writeln("  Edge prob (p): ", p)
+writeln("  Actual edges: ", getsize(EDGES))
+
+writeln("\nSolution:")
+writeln("  Colors used: ", getobjval)
+
+writeln("\nColor assignments:")
+forall(i in Nodes) do
+  forall(k in Colors | getsol(x(i,k)) > 0.5)
+    writeln("  Node ", i, " → Color ", k)
+end-do
+
+end-model
