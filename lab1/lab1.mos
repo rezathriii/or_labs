@@ -1,58 +1,48 @@
 model "Graph Coloring"
-uses "mmxprs"
+uses "mmxprs", "mmsystem"
 
 parameters
-  N = 20
-  p = 0.1
-  InputFile = "N20_p0.1.txt"
+  N = 40       ! 20, 40, 60
+  p = 0.1      ! 0.1, 0.3, 0.5
+  SEED = 1234
 end-parameters
 
 declarations
   Nodes = 1..N
   Colors = 1..N
-  EDGES: set of array(1..2) of integer
+  Edge: array(Nodes, Nodes) of boolean
   x: array(Nodes, Colors) of mpvar
   y: array(Colors) of mpvar
+  StartTime, EndTime: real
 end-declarations
 
-initializations from InputFile
-  EDGES as "EdgeList"
-end-initializations
+setrandseed(SEED)
+StartTime := gettime
 
-Minimize := sum(k in Colors) y(k)
-
-! Constraints
-forall(i in Nodes) sum(k in Colors) x(i,k) = 1
-
-forall(e in EDGES, k in Colors) do
-  x(e(1),k) + x(e(2),k) <= 1
+forall(i,j in Nodes | i < j) do
+  if random <= p then
+    Edge(i,j) := true
+    Edge(j,i) := true
+  end-if
 end-do
 
+ActualEdges := sum(i,j in Nodes | i < j and Edge(i,j)) 1
+
+Minimize := sum(k in Colors) y(k)
+forall(i in Nodes) sum(k in Colors) x(i,k) = 1
+forall(i,j in Nodes | i < j and Edge(i,j)) do
+  forall(k in Colors) x(i,k) + x(j,k) <= 1
+end-do
 forall(i in Nodes, k in Colors) x(i,k) <= y(k)
-
-
 forall(k in Colors) y(k) is_binary
 forall(i in Nodes, k in Colors) x(i,k) is_binary
 
 minimize(Minimize)
-writeln("Total colors used: ", getobjval)
+EndTime := gettime
 
 ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-! OUTPUT RESULTS
+! OUTPUT
 ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-writeln("\n=== Graph Coloring Results ===")
-writeln("Graph parameters:")
-writeln("  Nodes (N): ", N)
-writeln("  Edge prob (p): ", p)
-writeln("  Actual edges: ", getsize(EDGES))
-
-writeln("\nSolution:")
-writeln("  Colors used: ", getobjval)
-
-writeln("\nColor assignments:")
-forall(i in Nodes) do
-  forall(k in Colors | getsol(x(i,k)) > 0.5)
-    writeln("  Node ", i, " → Color ", k)
-end-do
-
+writeln("GC, N=", N, ", p=", p, ", Edges=", ActualEdges,
+        ", Colors=", getobjval, ", Time=", EndTime-StartTime, "s")
 end-model

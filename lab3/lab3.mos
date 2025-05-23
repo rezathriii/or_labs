@@ -1,0 +1,61 @@
+model "Maximum Independent Set"
+uses "mmxprs", "mmsystem"
+
+parameters
+  N = 60                  ! 20, 40, 60
+  p = 0.4                 ! 0.1, 0.2, 0.4
+  SEED = 1234
+  WEIGHT_TYPE = "unit" ! "uniform" or "unit"
+end-parameters
+
+declarations
+  Nodes = 1..N
+  Edge: array(Nodes, Nodes) of boolean
+  Weight: array(Nodes) of real
+  x: array(Nodes) of mpvar
+  StartTime, EndTime: real
+end-declarations
+
+! Set seed and timer
+setrandseed(SEED)
+StartTime := gettime
+
+! Generate random edges and weights
+forall(i,j in Nodes | i < j) do
+  if random <= p then
+    Edge(i,j) := true
+    Edge(j,i) := true
+  end-if
+end-do
+
+forall(i in Nodes) do
+  if WEIGHT_TYPE = "uniform" then
+    Weight(i) := random
+  else
+    Weight(i) := 1.0
+  end-if
+end-do
+
+! Count edges
+ActualEdges := sum(i,j in Nodes | i < j and Edge(i,j)) 1
+
+! Objective: Maximize weighted independent set
+TotalWeight := sum(i in Nodes) Weight(i) * x(i)
+
+! Constraints: No adjacent nodes in the set
+forall(i,j in Nodes | i < j and Edge(i,j)) x(i) + x(j) <= 1
+
+! Binary variables
+forall(i in Nodes) x(i) is_binary
+
+! Solve
+maximize(TotalWeight)
+EndTime := gettime
+
+! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+! OUTPUT
+! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+writeln("MIS, N=", N, ", p=", p, ", Edges=", ActualEdges,
+       ", WeightType=", WEIGHT_TYPE, ", MaxWeight=", getobjval,
+       ", Time=", EndTime-StartTime, "s")
+end-model

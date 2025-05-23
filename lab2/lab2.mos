@@ -1,0 +1,42 @@
+model "Maximum Clique"
+uses "mmxprs", "mmsystem"
+
+parameters
+  N = 60          ! 20, 40, 60
+  p = 0.5         ! 0.1, 0.3, 0.5
+  SEED = 1234
+end-parameters
+
+declarations
+  Nodes = 1..N
+  Edge: array(Nodes, Nodes) of boolean
+  x: array(Nodes) of mpvar
+  StartTime, EndTime: real
+end-declarations
+
+setrandseed(SEED)
+StartTime := gettime
+
+forall(i,j in Nodes | i < j) do
+  if random <= p then
+    Edge(i,j) := true
+    Edge(j,i) := true
+  end-if
+end-do
+
+ActualEdges := sum(i,j in Nodes | i < j and Edge(i,j)) 1
+
+CliqueSize := sum(i in Nodes) x(i)
+forall(i,j in Nodes | i < j and not Edge(i,j)) x(i) + x(j) <= 1
+forall(i in Nodes) x(i) is_binary
+
+! Solve
+maximize(CliqueSize)
+EndTime := gettime
+
+! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+! OUTPUT
+! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+writeln("MC, N=", N, ", p=", p, ", Edges=", ActualEdges,
+        ", Clique=", getobjval, ", Time=", EndTime-StartTime, "s")
+end-model

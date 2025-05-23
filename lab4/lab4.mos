@@ -1,0 +1,60 @@
+model "Frequency Allocation"
+uses "mmxprs", "mmsystem"
+
+parameters
+  N = 60                  ! 20, 40, 60
+  p = 0.4                 ! 0.2, 0.4
+  SEED = 1234
+  MIN_SPACING = 1         ! Minimum frequency separation
+end-parameters
+
+declarations
+  Nodes = 1..N
+  Edge: array(Nodes, Nodes) of boolean
+  f: array(Nodes) of mpvar  ! Frequency assignment
+  y: array(Nodes) of mpvar  ! Auxiliary variable for max frequency
+  StartTime, EndTime: real
+end-declarations
+
+! Set seed and timer
+setrandseed(SEED)
+StartTime := gettime
+
+! Generate random conflict graph
+forall(i,j in Nodes | i < j) do
+  if random <= p then
+    Edge(i,j) := true
+    Edge(j,i) := true
+  end-if
+end-do
+
+! Count edges
+ActualEdges := sum(i,j in Nodes | i < j and Edge(i,j)) 1
+
+! Objective: Minimize spectrum width (max frequency used)
+SpectrumWidth := y(N)  ! Will enforce y(N) = max(f(i))
+
+! Constraints
+forall(i in Nodes) f(i) >= 1  ! Frequencies start at 1
+
+! Enforce y(N) = max(f(i))
+forall(i in Nodes) y(i) = f(i)
+forall(i in Nodes | i > 1) y(i) >= y(i-1)
+
+! Frequency separation for conflicting nodes
+forall(i,j in Nodes | i < j and Edge(i,j)) do
+  f(i) - f(j) >= MIN_SPACING
+  f(j) - f(i) >= MIN_SPACING
+end-do
+
+! Solve
+minimize(SpectrumWidth)
+EndTime := gettime
+
+! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+! OUTPUT
+! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+writeln("FREQ, N=", N, ", p=", p, ", Edges=", ActualEdges,
+       ", MinSpacing=", MIN_SPACING, ", SpectrumWidth=", getsol(y(N)),
+       ", Time=", EndTime-StartTime, "s")
+end-model
