@@ -1,0 +1,61 @@
+model "Bandwidth Allocation"
+    uses "mmxprs"
+
+    parameters
+        N = 5      ! Number of nodes: 20, 40, 60
+        P = 0.2     ! Edge probability: 0.2, 0.4
+        MAX_K = 40  ! A safe upper bound for frequencies (e.g., 2*N)
+    end-parameters
+
+    declarations
+        NODES = 1..N
+        FREQS = 1..MAX_K
+        EDGE: array(NODES, NODES) of integer
+        x: array(NODES, FREQS) of mpvar
+        z: mpvar ! Represents the width of the used spectrum
+    end-declarations
+
+    ! --- Random Graph Generation ---
+    forall(i,j in NODES | i < j) do
+        if random < P then
+            EDGE(i,j) := 1
+            EDGE(j,i) := 1
+        end-if
+    end-do
+
+    ! --- Constraints ---
+    ! 1. Each node must have exactly one frequency
+    forall(i in NODES) sum(k in FREQS) x(i,k) = 1
+
+    ! 2. Bandwidth constraints for adjacent nodes
+    forall(i,j in NODES | i < j and EDGE(i,j) = 1) do
+        forall(k in FREQS) do
+            ! Cannot use same frequency
+            x(i,k) + x(j,k) <= 1
+            ! Cannot use contiguous frequencies
+            if k < MAX_K then
+                x(i,k) + x(j,k+1) <= 1
+                x(j,k) + x(i,k+1) <= 1
+            end-if
+        end-do
+    end-do
+
+    ! 3. Define the spectrum width z
+    forall(i in NODES, k in FREQS) z >= k * x(i,k)
+
+    ! Variable Types
+    forall(i in NODES, k in FREQS) x(i,k) is_binary
+
+    ! --- Solve ---
+    minimize(z)
+
+    ! --- Output ---
+    writeln("================================")
+    writeln("ASSIGNMENT 2: BANDWIDTH ALLOCATION")
+    writeln("================================")
+    writeln("Nodes (N): ", N)
+    writeln("Probability (P): ", P)
+    writeln("Optimal Spectrum Width (z): ", getobjval)
+    writeln("Theoretical Chi(G) estimate: ", (getobjval + 1) / 2)
+    writeln("================================")
+end-model

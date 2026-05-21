@@ -1,0 +1,83 @@
+model "CoveringProblem"
+    uses "mmxprs"
+
+    parameters
+        N = 60          ! Number of demand points
+        M = 25          ! Number of candidate locations
+        R = 0.2         ! Coverage radius
+        ALPHA = 0.8     ! Fraction for partial covering (e.g., 80%)
+        USE_PARTIAL = true ! Toggle between full and partial covering
+    end-parameters
+
+    declarations
+        DEMAND = 1..N
+        FACILITIES = 1..M
+
+        ! Coordinates in [0,1]x[0,1]
+        dx, dy: array(DEMAND) of real
+        fx, fy: array(FACILITIES) of real
+
+        cost: array(FACILITIES) of real ! Costs uniform in [1,10] [cite: 29]
+        A: array(DEMAND, FACILITIES) of integer ! Coverage matrix
+
+        ! Decision Variables
+        y: array(FACILITIES) of mpvar ! 1 if facility is opened [cite: 24]
+        z: array(DEMAND) of mpvar     ! 1 if demand point is covered
+    end-declarations
+
+    ! --- 1. Data Generation ---
+    setrandseed(1)
+    forall(i in DEMAND) do
+        dx(i) := random
+        dy(i) := random
+    end-do
+
+    forall(j in FACILITIES) do
+        fx(j) := random
+        fy(j) := random
+        cost(j) := 1 + 9 * random ! Uniform [1, 10] [cite: 29]
+    end-do
+
+    ! Calculate adjacency/coverage matrix A [cite: 23]
+    forall(i in DEMAND, j in FACILITIES) do
+        dist := sqrt((dx(i)-fx(j))^2 + (dy(i)-fy(j))^2)
+        if dist <= R then
+            A(i,j) := 1
+        else
+            A(i,j) := 0
+        end-if
+    end-do
+
+    ! --- 2. Objective Function ---
+    TotalCost := sum(j in FACILITIES) cost(j) * y(j)
+
+    ! --- 3. Constraints ---
+
+    ! Variable types
+    forall(j in FACILITIES) y(j) is_binary
+    forall(i in DEMAND) z(i) is_binary
+
+    if not USE_PARTIAL then
+        ! Full Covering: Every point i must be covered [cite: 24]
+        forall(i in DEMAND) sum(j in FACILITIES) A(i,j) * y(j) >= 1
+    else
+        ! Partial Covering: Point i is covered if z(i)=1
+        forall(i in DEMAND) sum(j in FACILITIES) A(i,j) * y(j) >= z(i)
+
+        ! Cover at least a fraction ALPHA of points
+        sum(i in DEMAND) z(i) >= ALPHA * N
+    end-if
+
+    ! --- 4. Optimization & Output ---
+    minimize(TotalCost)
+
+    writeln("=====================================")
+    writeln("COVERING RESULTS")
+    writeln("Scenario: ", if(USE_PARTIAL, "Partial ("+ALPHA*100+"%)", "Full Coverage"))
+    writeln("Total Facilities Opened: ", getsol(sum(j in FACILITIES) y(j)))
+    writeln("Total Minimum Cost: ", getobjval)
+    if USE_PARTIAL then
+        writeln("Points Covered: ", getsol(sum(i in DEMAND) z(i)), " out of ", N)
+    end-if
+    writeln("=====================================")
+end-model

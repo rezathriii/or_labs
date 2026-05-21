@@ -1,0 +1,70 @@
+model "BvN_Decomposition"
+    uses "mmxprs"
+
+    parameters
+        N = 6           ! Matrix size 6x6
+        MAX_VAL = 12    ! Entries from 0 to 12
+        K_MAX = 45      ! Reduced from 80 to bypass the 5000 license limit!
+    end-parameters
+
+    declarations
+        ROWS = 1..N
+        COLS = 1..N
+        MATS = 1..K_MAX
+        
+        B: array(ROWS, COLS) of integer ! Input Matrix
+        
+        ! x(i,j,h) = 1 if entry (i,j) of B is covered by matrix h
+        x: array(ROWS, COLS, MATS) of mpvar
+        ! u(h) = 1 if matrix h is used in the decomposition
+        u: array(MATS) of mpvar
+    end-declarations
+
+    ! --- 1. Generate Random Matrix B ---
+    setrandseed(12) ! You can change this number (e.g. 10, 11, 12) to get different instances
+    forall(i in ROWS, j in COLS) B(i,j) := round(random * MAX_VAL)
+
+    ! --- 2. Constraints ---
+    ! Every entry B(i,j) must be decomposed into the sum of matrices
+    forall(i in ROWS, j in COLS) 
+        sum(h in MATS) x(i,j,h) = B(i,j)
+
+    ! Sub-permutation property for each matrix h:
+    forall(h in MATS) do
+        forall(i in ROWS) sum(j in COLS) x(i,j,h) <= 1 
+        forall(j in COLS) sum(i in ROWS) x(i,j,h) <= 1 
+    end-do
+
+    ! Link x variables to the usage variable u
+    forall(i in ROWS, j in COLS, h in MATS) x(i,j,h) <= u(h)
+
+    ! Symmetry breaking to help solver performance
+    forall(h in 1..(K_MAX-1)) u(h) >= u(h+1)
+
+    ! Variable types
+    forall(i in ROWS, j in COLS, h in MATS) x(i,j,h) is_binary
+    forall(h in MATS) u(h) is_binary
+
+    ! --- 3. Objective: Minimize K ---
+    K := sum(h in MATS) u(h)
+    minimize(K)
+
+    ! --- 4. Output Results ---
+    writeln("=====================================")
+    writeln("BIRKHOFF-VON NEUMANN DECOMPOSITION")
+    writeln("=====================================")
+    writeln("Input Matrix B:")
+    forall(i in ROWS) do
+        forall(j in COLS) write(B(i,j), " ")
+        writeln
+    end-do
+    
+    max_sum := 0
+    forall(i in ROWS) if sum(j in COLS) B(i,j) > max_sum then max_sum := sum(j in COLS) B(i,j); end-if
+    forall(j in COLS) if sum(i in ROWS) B(i,j) > max_sum then max_sum := sum(i in ROWS) B(i,j); end-if
+    
+    writeln("-------------------------------------")
+    writeln("Theoretical Min K (Max Row/Col Sum): ", max_sum)
+    writeln("Solver Optimized K: ", getobjval)
+    writeln("=====================================")
+end-model

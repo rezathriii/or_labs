@@ -1,0 +1,70 @@
+model "CapacitatedCovering"
+    uses "mmxprs"
+
+    parameters
+        N = 60          ! Number of demand points
+        M = 20          ! Number of candidate locations
+        UNIT_COST = 10  ! Cost multiplier for distance
+    end-parameters
+
+    declarations
+        DEMAND = 1..N
+        FACILITIES = 1..M
+
+        dx, dy: array(DEMAND) of real
+        fx, fy: array(FACILITIES) of real
+
+        f_cost: array(FACILITIES) of real  ! Opening cost
+        capacity: array(FACILITIES) of real ! Max capacity
+        d_quant: array(DEMAND) of real     ! Demand quantity
+        c_service: array(DEMAND, FACILITIES) of real ! Service cost
+
+        y: array(FACILITIES) of mpvar     ! 1 if facility open
+        x: array(DEMAND, FACILITIES) of mpvar ! 1 if i assigned to j
+    end-declarations
+
+    ! --- 1. Data Generation ---
+    forall(i in DEMAND) d_quant(i) := 1 + 4 * random  ! Demand between 1 and 5
+    forall(j in FACILITIES) do
+        f_cost(j) := 50 + 50 * random      ! Opening cost between 50 and 100
+        capacity(j) := 15 + 10 * random    ! Capacity between 15 and 25
+        fx(j) := random; fy(j) := random
+    end-do
+
+    forall(i in DEMAND) do
+        dx(i) := random; dy(i) := random
+        forall(j in FACILITIES) do
+            dist := sqrt((dx(i)-fx(j))^2 + (dy(i)-fy(j))^2)
+            c_service(i,j) := dist * UNIT_COST ! Cost increases with distance
+        end-do
+    end-do
+
+    ! --- 2. Objective Function ---
+    TotalCost := sum(j in FACILITIES) f_cost(j) * y(j) +
+                 sum(i in DEMAND, j in FACILITIES) c_service(i,j) * x(i,j)
+
+    ! --- 3. Constraints ---
+    ! Every demand point must be covered
+    forall(i in DEMAND) sum(j in FACILITIES) x(i,j) = 1
+
+    ! Capacity constraint and open-status link
+    forall(j in FACILITIES)
+        sum(i in DEMAND) d_quant(i) * x(i,j) <= capacity(j) * y(j)
+
+    ! Variable types
+    forall(j in FACILITIES) y(j) is_binary
+    forall(i in DEMAND, j in FACILITIES) x(i,j) is_binary
+
+    ! --- 4. Optimization ---
+    minimize(TotalCost)
+
+    writeln("=====================================")
+    writeln("CAPACITATED COVERING RESULTS")
+    writeln("Total Cost: ", getobjval)
+    writeln("Facilities Opened: ", getsol(sum(j in FACILITIES) y(j)))
+    forall(j in FACILITIES | getsol(y(j)) > 0) do
+        used_cap := getsol(sum(i in DEMAND) d_quant(i) * x(i,j))
+        writeln("Facility ", j, ": Used ", used_cap, " / ", capacity(j))
+    end-do
+    writeln("=====================================")
+end-model
