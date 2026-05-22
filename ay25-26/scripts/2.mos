@@ -1,0 +1,112 @@
+model "BandwidthAllocation"
+  uses "mmxprs", "mmsystem"
+
+  public procedure run_instance(N: integer, p: real, seed: integer)
+  
+    declarations
+      NODES = 1..N
+      
+      ! Dynamic adjacency metrics to determine precise bounds
+      adj: array(NODES, NODES) of integer
+      degree: array(NODES) of integer
+    end-declarations
+
+    ! 1. Graph Generation (Erdos-Renyi G(N, p) model)
+    setrandseed(seed)
+    forall(i in NODES) degree(i) := 0
+    
+    forall(i in NODES, j in i+1..N) do
+      if (random <= p) then
+        adj(i,j) := 1; adj(j,i) := 1
+        degree(i) += 1; degree(j) += 1
+      else
+        adj(i,j) := 0; adj(j,i) := 0
+      end-if
+    end-do
+
+    ! Calculate maximum degree (Delta) to establish a safe localized palette bound
+    max_deg := 0
+    forall(i in NODES) do
+      if degree(i) > max_deg then
+        max_deg := degree(i)
+      end-if
+    end-do
+    
+    ! Worst case spectrum allocation bound for contiguous constraints is (2 * Delta + 1)
+    K := 2 * max_deg + 1
+    if K > N then
+      K := N
+    end-if
+    
+    declarations
+      FREQS = 1..K
+      ! x(i,f) = 1 if node i is assigned frequency f
+      x: array(NODES, FREQS) of mpvar  
+      ! y(f) = 1 if frequency f is used globally
+      y: array(FREQS) of mpvar         
+    end-declarations
+
+    ! 2. Variable Configurations
+    forall(f in FREQS) y(f) is_binary
+    forall(i in NODES, f in FREQS) x(i,f) is_binary
+
+    ! 3. Objective Function: Minimize total active spectrum span
+    ! Since channels are ordered, the width is determined by the highest channel activated
+    SpanObjective := sum(f in FREQS) y(f)
+
+    ! 4. Mathematical Constraints
+    ! Every node must be assigned exactly one frequency channel
+    forall(i in NODES)
+      sum(f in FREQS) x(i,f) = 1
+
+    ! Link variable activation to channel usage
+    forall(i in NODES, f in FREQS)
+      x(i,f) <= y(f)
+
+    ! Channel separation logic: Co-channel and adjacent-channel exclusions
+    forall(i in NODES, j in i+1..N | adj(i,j) = 1) do
+      forall(f in FREQS) do
+        ! Node i and node j cannot share frequency f
+        x(i,f) + x(j,f) <= 1
+        
+        ! Adjacent frequency constraints (f and f+1 cannot be split between neighbors)
+        if f < K then
+          x(i,f) + x(j,f+1) <= 1
+          x(i,f+1) + x(j,f) <= 1
+        end-if
+      end-do
+    end-do
+
+    ! Symmetry Breaking: Force sequential activation of spectrum blocks
+    forall(f in 2..K)
+      y(f) <= y(f-1)
+
+    ! 5. Solve Optimization Task
+    setparam("XPRS_VERBOSE", false)
+    starttime := gettime
+    minimize(SpanObjective)
+    elapsedtime := gettime - starttime
+
+    ! 6. Formatted Performance Logs
+    writeln("Result: N=", N, " p=", p, " Delta=", max_deg, " Spectrum_Width=", getobjval, " Time=", elapsedtime, "s Status=", getparam("XPRS_MIPSTATUS"))
+    
+  end-procedure
+
+  ! Main Simulation Automation Driver Loop
+  declarations
+    sizes = [20, 40, 60]
+    probs = [0.2, 0.4]
+  end-declarations
+
+  writeln("Starting Bandwidth Allocation Optimization Tasks...")
+  
+  s := 54321 ! Unique seed value for dataset generation
+  forall(n_val in sizes, p_val in probs) do
+    writeln("\n--- RUNNING PARAMETER SPACE: N=", n_val, ", p=", p_val, " ---")
+    forall(inst in 1..3) do
+      run_instance(n_val, p_val, s)
+      s += 246
+    end-do
+  end-do
+
+end-model

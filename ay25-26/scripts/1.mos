@@ -1,0 +1,92 @@
+model "BirkhoffVonNeumannDecomposition"
+  uses "mmxprs", "mmsystem"
+
+  procedure run_bvn_experiment(N: integer, max_val: integer, seed: integer)
+    declarations
+      ROWS = 1..N
+      COLS = 1..N
+
+      ! Input base traffic matrix
+      B: array(ROWS, COLS) of integer
+    end-declarations
+
+    setrandseed(seed)
+
+    ! 1. Generate Random Matrix entries i.i.d. over {0, ..., max_val}
+    forall(i in ROWS, j in COLS) do
+      B(i,j) := round(random * max_val)
+    end-do
+
+    ! 2. Compute tight upper bound K for the palette size
+    ! The minimal number of sub-permutations is exactly equal to the maximum row/column sum
+    max_row_sum := 0
+    forall(i in ROWS) do
+      r_sum := sum(j in COLS) B(i,j)
+      if r_sum > max_row_sum then max_row_sum := r_sum; end-if
+    end-do
+
+    max_col_sum := 0
+    forall(j in COLS) do
+      c_sum := sum(i in ROWS) B(i,j)
+      if c_sum > max_col_sum then max_col_sum := c_sum; end-if
+    end-do
+
+    ! Target optimal palette allocation size
+    K := max_row_sum
+    if max_col_sum > K then K := max_col_sum; end-if
+
+    declarations
+      MATRICES = 1..K
+
+      ! x(h,i,j) = 1 if sub-permutation matrix h has a 1 at row i, column j
+      x: array(MATRICES, ROWS, COLS) of mpvar
+
+      ! y(h) = 1 if sub-permutation matrix h is actively used in the decomposition
+      y: array(MATRICES) of mpvar
+    end-declarations
+
+    ! 3. Variable Configurations
+    forall(h in MATRICES) y(h) is_binary
+    forall(h in MATRICES, i in ROWS, j in COLS) x(h,i,j) is_binary
+
+    ! 4. Objective Function: Minimize total active sub-permutation layers
+    TotalMatrices := sum(h in MATRICES) y(h)
+
+    ! 5. Mathematical Constraints
+    ! Exact matrix reconstruction matching input traffic profile
+    forall(i in ROWS, j in COLS)
+      sum(h in MATRICES) x(h,i,j) = B(i,j)
+
+    ! Row constraint for sub-permutation configurations
+    forall(h in MATRICES, i in ROWS)
+      sum(j in COLS) x(h,i,j) <= y(h)
+
+    ! Column constraint for sub-permutation configurations
+    forall(h in MATRICES, j in COLS)
+      sum(i in ROWS) x(h,i,j) <= y(h)
+
+    ! Symmetry Breaking: Ensure sequential index packing
+    forall(h in 2..K)
+      y(h) <= y(h-1)
+
+    ! 6. Solve Optimization Task
+    setparam("XPRS_VERBOSE", false)
+    starttime := gettime
+    minimize(TotalMatrices)
+    elapsedtime := gettime - starttime
+
+    ! Print Formatted Performance Logs
+    writeln("Result: Matrix_Size=", N, "x", N, " Max_Row/Col_Sum=", K, " Decomposed_K=", getobjval, " Time=", elapsedtime, "s Status=", getparam("XPRS_MIPSTATUS"))
+  end-procedure
+
+  ! Execute 3 Independent Benchmark Runs
+  writeln("Starting Birkhoff-von Neumann Decomposition Tasks...")
+  bvn_seed := 112233
+
+  forall(inst in 1..3) do
+    writeln("\n--- RUNNING INSTANCE CASE ", inst, " ---")
+    run_bvn_experiment(6, 12, bvn_seed)
+    bvn_seed += 517
+  end-do
+
+end-model

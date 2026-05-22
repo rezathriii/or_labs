@@ -1,0 +1,106 @@
+model "CapacitatedCoveringProblem"
+  uses "mmxprs", "mmsystem"
+
+  procedure run_capacitated_experiment(N: integer, M: integer, seed: integer)
+    declarations
+      DEMAND = 1..N
+      FACILITIES = 1..M
+      
+      ! Geometric coordinates in a bounded unit square
+      demand_x, demand_y: array(DEMAND) of real
+      fac_x, fac_y: array(FACILITIES) of real
+      
+      ! Structural parameters
+      demand_qty: array(DEMAND) of real
+      fac_capacity: array(FACILITIES) of real
+      opening_cost: array(FACILITIES) of real
+      service_cost: array(DEMAND, FACILITIES) of real
+      
+      ! Decision Variables
+      z: array(FACILITIES) of mpvar      ! z(j) = 1 if facility j is opened
+      x: array(DEMAND, FACILITIES) of mpvar ! x(i,j) fraction of demand i served by facility j
+    end-declarations
+
+    setrandseed(seed)
+    
+    ! 1. Generate Uniform Random Coordinates
+    forall(i in DEMAND) do
+      demand_x(i) := random
+      demand_y(i) := random
+      demand_qty(i) := 5.0 + (random * 15.0) ! Demand weights between 5 and 20 units
+    end-do
+    
+    forall(j in FACILITIES) do
+      fac_x(j) := random
+      fac_y(j) := random
+      opening_cost(j) := 50.0 + (random * 100.0) ! Fixed costs between 50 and 150
+    end-do
+
+    ! 2. Calculate Distance-Based Service Costs and Uniform Capacity Matrix
+    total_demand := sum(i in DEMAND) demand_qty(i)
+    forall(j in FACILITIES) do
+      ! Ensure collective capacities can mathematically support total demand
+      fac_capacity(j) := (total_demand / M) * 1.5 
+    end-do
+
+    forall(i in DEMAND, j in FACILITIES) do
+      dist := sqrt((demand_x(i) - fac_x(j))^2 + (demand_y(i) - fac_y(j))^2)
+      service_cost(i,j) := dist * 12.5 ! Service cost scales proportionally with distance
+    end-do
+
+    ! 3. Variable Configurations
+    forall(j in FACILITIES) z(j) is_binary
+    forall(i in DEMAND, j in FACILITIES) x(i,j) is_continuous ! Continuous split-delivery allowed
+
+    ! 4. Objective Function: Minimize Facility Openings + Transport Service Costs
+    TotalSystemCost := sum(j in FACILITIES) opening_cost(j) * z(j) + sum(i in DEMAND, j in FACILITIES) service_cost(i,j) * x(i,j)
+
+    ! 5. Mathematical Constraints
+    ! Complete service delivery for every demand point
+    forall(i in DEMAND)
+      sum(j in FACILITIES) x(i,j) = 1
+
+    ! Operational capacity limits on opened infrastructure units
+    forall(j in FACILITIES)
+      sum(i in DEMAND) demand_qty(i) * x(i,j) <= fac_capacity(j) * z(j)
+
+    ! Variable boundaries bounding transport slices to open facilities
+    forall(i in DEMAND, j in FACILITIES)
+      x(i,j) <= z(j)
+
+    ! 6. Solve Optimization Task
+    setparam("XPRS_VERBOSE", false)
+    starttime := gettime
+    minimize(TotalSystemCost)
+    elapsedtime := gettime - starttime
+
+    ! Determine system deployment configuration metrics
+    opened_units := 0
+    forall(j in FACILITIES) do
+      if getsol(z(j)) > 0.5 then
+        opened_units += 1
+      end-if
+    end-do
+
+    ! Output Formatted Performance Logs
+    writeln("Result: N=", N, " M=", M, " System_Cost=", getobjval, " Opened_Fac=", opened_units, " Time=", elapsedtime, "s Status=", getparam("XPRS_MIPSTATUS"))
+  end-procedure
+
+  ! Automated Benchmark Run Executions
+  writeln("Starting Capacitated Facility Location Optimization Tasks...")
+  
+  sim_seed := 24680
+  
+  writeln("\n--- EVALUATING PARAMETER CONFIGURATION: N=30, M=5 ---")
+  forall(inst in 1..3) do
+    run_capacitated_experiment(30, 5, sim_seed)
+    sim_seed += 419
+  end-do
+  
+  writeln("\n--- EVALUATING PARAMETER CONFIGURATION: N=60, M=10 ---")
+  forall(inst in 1..3) do
+    run_capacitated_experiment(60, 10, sim_seed)
+    sim_seed += 419
+  end-do
+
+end-model

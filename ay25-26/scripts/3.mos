@@ -1,0 +1,110 @@
+model "SetCoveringProblem"
+  uses "mmxprs", "mmsystem"
+
+  procedure run_covering_experiment(N: integer, M: integer, R: real, alpha: real, seed: integer)
+    declarations
+      DEMAND = 1..N
+      FACILITIES = 1..M
+      
+      ! Coordinates in [0,1]^2 space
+      demand_x: array(DEMAND) of real
+      demand_y: array(DEMAND) of real
+      fac_x: array(FACILITIES) of real
+      fac_y: array(FACILITIES) of real
+      
+      ! Fixed facility installation costs
+      cost: array(FACILITIES) of real
+      
+      ! Coverage matrix: 1 if facility j covers demand point i
+      covers: array(DEMAND, FACILITIES) of integer
+      
+      ! Decision variables
+      z: array(FACILITIES) of mpvar ! z(j) = 1 if facility j is opened
+      v: array(DEMAND) of mpvar     ! v(i) = 1 if demand point i is covered
+    end-declarations
+
+    setrandseed(seed)
+    
+    ! 1. Generate Uniform Random Locations and Costs
+    forall(i in DEMAND) do
+      demand_x(i) := random
+      demand_y(i) := random
+    end-do
+    
+    forall(j in FACILITIES) do
+      fac_x(j) := random
+      fac_y(j) := random
+      cost(j) := 1.0 + (random * 9.0) ! Uniform distribution in [1, 10]
+    end-do
+
+    ! 2. Compute Coverage Matrix via Euclidean Distance
+    forall(i in DEMAND, j in FACILITIES) do
+      dist := sqrt((demand_x(i) - fac_x(j))^2 + (demand_y(i) - fac_y(j))^2)
+      if dist <= R then
+        covers(i,j) := 1
+      else
+        covers(i,j) := 0
+      end-if
+    end-do
+
+    ! 3. Variable Configurations
+    forall(j in FACILITIES) z(j) is_binary
+    forall(i in DEMAND) v(i) is_binary
+
+    ! 4. Objective Function: Minimize Total Infrastructure Cost
+    TotalCost := sum(j in FACILITIES) cost(j) * z(j)
+
+    ! 5. Mathematical Constraints
+    ! Demand satisfaction linkage
+    forall(i in DEMAND)
+      sum(j in FACILITIES) covers(i,j) * z(j) >= v(i)
+
+    ! Coverage Requirement Threshold (Fraction alpha)
+    sum(i in DEMAND) v(i) >= alpha * N
+
+    ! 6. Solve Optimization Task
+    setparam("XPRS_VERBOSE", false)
+    starttime := gettime
+    minimize(TotalCost)
+    elapsedtime := gettime - starttime
+
+    ! Determine actual number of opened facilities
+    opened_count := 0
+    forall(j in FACILITIES) do
+      if getsol(z(j)) > 0.5 then
+        opened_count += 1
+      end-if
+    end-do
+
+    ! Print Formatted Performance Logs
+    writeln("Result: N=", N, " M=", M, " R=", R, " alpha=", alpha, " Obj_Cost=", getobjval, " Opened_Fac=", opened_count, " Time=", elapsedtime, "s Status=", getparam("XPRS_MIPSTATUS"))
+  end-procedure
+
+  ! Main Simulation Execution Control Loop
+  writeln("Starting Facility Covering Optimization Tasks...")
+  
+  s := 13579 ! Unique base seed
+  
+  ! Scenario Group 1: Full Coverage (alpha = 1.0)
+  writeln("\n--- GROUP 1: FULL COVERAGE SCENARIOS (alpha = 1.0) ---")
+  forall(inst in 1..3) do
+    run_covering_experiment(60, 25, 0.20, 1.0, s)
+    s += 313
+  end-do
+  forall(inst in 1..3) do
+    run_covering_experiment(50, 35, 0.15, 1.0, s)
+    s += 313
+  end-do
+
+  ! Scenario Group 2: Partial Coverage Extensions (alpha = 0.85)
+  writeln("\n--- GROUP 2: PARTIAL COVERAGE EXTENSIONS (alpha = 0.85) ---")
+  forall(inst in 1..3) do
+    run_covering_experiment(60, 25, 0.20, 0.85, s)
+    s += 313
+  end-do
+  forall(inst in 1..3) do
+    run_covering_experiment(50, 35, 0.15, 0.85, s)
+    s += 313
+  end-do
+
+end-model
